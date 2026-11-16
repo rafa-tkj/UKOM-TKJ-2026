@@ -1,274 +1,345 @@
-============================================================
-                    LSP 2026 - ABSEN 20
-          PANDUAN KONFIGURASI REVISI DAN TROUBLESHOOTING
-============================================================
+    KONFIGURASI LSP-P3
+    Ubuntu Server, MariaDB, Apache2, PHP, phpMyAdmin, dan DNS BIND9
 
-STATUS DAN TOPOLOGI YANG DIPAKAI
---------------------------------
-Domain final          : ukom12tkj-20.sch.id
-Ubuntu Server         : 10.10.20.2/28
-Gateway server        : 10.10.20.1
-Interface Ubuntu      : enp0s3
-Jaringan server       : 10.10.20.0/28
-MikroTik WAN          : ETH 1ISP (IP dinamis dari ISP)
-MikroTik server       : ETH 2 SERVER - 10.10.20.1/28
-MikroTik client kabel : ETH 3 CLIENT - 100.100.20.1/30
-MikroTik Wi-Fi        : WLAN 1 HOTSPOT - 192.168.20.1/24
-Jaringan hotspot      : 192.168.20.0/24
-DNS untuk HP          : 192.168.20.1 (MikroTik)
-DNS lokal Ubuntu      : 127.0.0.1 (BIND9)
-Database              : ukom20
-User database         : ukom20
-Web root              : /var/www/html
+    INFORMASI SERVER
+    IP Server        : 100.100.20.2/30
+    Gateway          : 10.10.20.1
+    Domain           : ukom12tkj-20.sch.id
+    Database         : ukom20
+    Tabel            : informasi
+    User Database    : ukom20
+    Password Database: UkomDB@2026
 
-PENTING:
-1. Dokumen ini disesuaikan dengan hasil troubleshooting terbaru.
-2. Jangan menjalankan ulang seluruh konfigurasi MikroTik dari awal.
-3. Nama interface aktual menggunakan ETH 1ISP, ETH 2 SERVER,
-   ETH 3 CLIENT, dan WLAN 1 HOTSPOT. Jangan menggantinya dengan
-   ether1/ether2/wlan1 tanpa memastikan nama interface.
-4. Konfigurasi lama yang membuat BR-HOTSPOT tidak cocok dengan
-   kondisi router yang terakhir diperiksa: bridge tidak ada dan
-   Hotspot berjalan langsung pada WLAN 1 HOTSPOT. Jangan membuat
-   bridge baru hanya dengan menyalin konfigurasi lama.
-5. Jangan menghapus konfigurasi yang sudah berhasil. Periksa dahulu
-   sebelum mengubah atau menambahkan aturan.
-
-
-============================================================
-1. NETPLAN - IP STATIS UBUNTU SERVER
-============================================================
-
-File: /etc/netplan/01-network.yaml
-
-Isi yang dipakai:
-
+    ============================================================
+    BAGIAN 1. KONFIGURASI DATABASE
+    ============================================================
+sudo nano /etc/netplan/..
 network:
   version: 2
   ethernets:
     enp0s3:
-      dhcp4: false
+      dhcp4: no
       addresses:
-        - 10.10.20.2/28
+        - 100.100.20.2/30
       routes:
         - to: default
           via: 10.10.20.1
       nameservers:
         addresses:
-          - 127.0.0.1
+          - 100.100.20.2
           - 8.8.8.8
           - 1.1.1.1
 
-Perintah pemeriksaan dan penerapan:
+    1. UPDATE PAKET UBUNTU
 
-sudo chmod 600 /etc/netplan/01-network.yaml
-sudo netplan generate
-sudo netplan apply
-ip -4 addr show enp0s3
-ip route
-
-HASIL YANG DIHARAPKAN:
-- enp0s3 memiliki 10.10.20.2/28.
-- Default route melalui 10.10.20.1.
-- Jangan menambahkan /28 pada alamat gateway di bagian routes.
-
-Catatan: file 50-cloud-init.yaml.bak adalah cadangan, bukan file
-konfigurasi aktif. Jangan mengaktifkannya bersamaan dengan file utama.
+    sudo apt update -y
 
 
-============================================================
-2. MARIADB - DATABASE DAN USER
-============================================================
+    2. INSTALL MARIADB SERVER DAN CLIENT
 
-Install dan aktifkan:
+    sudo apt install mariadb-server mariadb-client -y
 
-sudo apt update
-sudo apt install mariadb-server mariadb-client -y
-sudo systemctl enable --now mariadb
-sudo systemctl status mariadb --no-pager
 
-Jalankan pengamanan awal hanya jika belum pernah dilakukan:
+    3. AKTIFKAN MARIADB
 
-sudo mysql_secure_installation
+    sudo systemctl enable --now mariadb
 
-Pilihan yang digunakan pada instalasi ini:
-- Switch to unix_socket authentication: Y
-- Change root password: N
-- Remove anonymous users: Y
-- Disallow root login remotely: Y
-- Remove test database: Y
-- Reload privilege tables: Y
 
-Masuk ke MariaDB:
+    4. PERIKSA STATUS MARIADB
 
-sudo mariadb
+    sudo systemctl status mariadb
 
-Jalankan SQL berikut satu kali. Jangan membuat database yang sama
-berulang kali:
+    Pastikan status menunjukkan active (running).
 
-CREATE DATABASE IF NOT EXISTS ukom20
+
+    5. AMANKAN MARIADB
+
+    sudo mariadb-secure-installation
+
+    Pilihan konfigurasi:
+    - Switch to unix_socket authentication: Y
+    - Change root password: N
+    - Remove anonymous users: Y
+    - Disallow root login remotely: Y
+    - Remove test database: Y
+    - Reload privilege tables: Y
+
+
+    6. MASUK KE MARIADB DAN BUAT DATABASE
+
+    sudo mariadb
+
+    Jalankan SQL berikut:
+
+CREATE DATABASE ukom20
 CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
 
-CREATE USER IF NOT EXISTS 'ukom20'@'localhost'
-IDENTIFIED BY 'GANTI_PASSWORD_DATABASE';
 
-ALTER USER 'ukom20'@'localhost'
-IDENTIFIED BY 'GANTI_PASSWORD_DATABASE';
+    7. PERIKSA DATABASE
 
-GRANT ALL PRIVILEGES ON ukom20.* TO 'ukom20'@'localhost';
+    SHOW DATABASES;
+
+    Pastikan database ukom20 muncul.
+
+
+    8. BUAT USER DATABASE
+
+CREATE USER 'ukom20'@'localhost'
+IDENTIFIED BY 'UkomDB@2026';
+
+GRANT ALL PRIVILEGES ON ukom20.*
+TO 'ukom20'@'localhost';
+
+
+CREATE USER 'ukom20-rafa'@'localhost'
+IDENTIFIED BY 'UkomDB@2026';
+
+GRANT SELECT, SHOW VIEW ON ukom20.*
+TO 'ukom20-rafa'@'localhost';
+
 FLUSH PRIVILEGES;
+SHOW GRANTS FOR 'ukom20'@'localhost';
 
-USE ukom20;
+SHOW GRANTS FOR 'ukom20-rafa'@'localhost';
 
-Buat tabel jika belum ada:
+SELECT User, Host FROM mysql.user;
 
-CREATE TABLE IF NOT EXISTS informasi (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    nama VARCHAR(100) NOT NULL,
-    keterangan TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    9. BUAT TABEL INFORMASI
+
+    USE ukom20;
+    
+CREATE TABLE informasi (        
+id INT AUTO_INCREMENT PRIMARY KEY,
+nama VARCHAR(100) NOT NULL,
+keterangan TEXT,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-Masukkan data hanya jika tabel masih kosong agar tidak duplikat:
+    SHOW TABLES;
+
+    Pastikan tabel informasi muncul.
+
+
+    10. MASUKKAN DATA UKOM
 
 INSERT INTO informasi (nama, keterangan)
-SELECT 'UKOM TKJ', 'Web Server dan Database Server'
-WHERE NOT EXISTS (SELECT 1 FROM informasi WHERE nama='UKOM TKJ');
+VALUES
+('UKOM TKJ', 'Web Server dan Database Server'),
+('Absen 20', 'Konfigurasi jaringan Ukom'),
+('MikroTik', 'Gateway dan HotSpot'),
+('Server', 'Ubuntu Server 100.100.20.2');
 
-INSERT INTO informasi (nama, keterangan)
-SELECT 'Absen 20', 'Konfigurasi jaringan Ukom'
-WHERE NOT EXISTS (SELECT 1 FROM informasi WHERE nama='Absen 20');
+DELETE FROM informasi
+WHERE id = 4;
 
-INSERT INTO informasi (nama, keterangan)
-SELECT 'MikroTik', 'Gateway dan HotSpot'
-WHERE NOT EXISTS (SELECT 1 FROM informasi WHERE nama='MikroTik');
-
-INSERT INTO informasi (nama, keterangan)
-SELECT 'Server', 'Ubuntu Server 10.10.20.2'
-WHERE NOT EXISTS (SELECT 1 FROM informasi WHERE nama='Server');
-
-SELECT * FROM informasi;
-EXIT;
-
-Tes login user aplikasi:
-
-mariadb -u ukom20 -p ukom20
-
-Masukkan password: GANTI_PASSWORD_DATABASE
-Lalu jalankan: SELECT * FROM informasi;
-Keluar: EXIT;
-
-PENTING:
-- Perintah CREATE DATABASE sebelumnya tertulis dua kali; cukup satu.
-- Perintah GRANT harus ditulis lengkap seperti contoh di atas.
-- Perintah SQL dijalankan di prompt MariaDB, bukan di terminal Linux.
+INSERT INTO informasi (id, nama, keterangan)
+VALUES (4, 'Server', 'Ubuntu Server 100.100.20.2');
 
 
-============================================================
-3. APACHE2, PHP, DAN HALAMAN HTML
-============================================================
+    SELECT * FROM informasi;
 
-Install paket:
 
-sudo apt install apache2 php libapache2-mod-php php-mysql -y
-sudo systemctl enable --now apache2
-sudo systemctl status apache2 --no-pager
+    11. TES USER DATABASE
 
-File uji database:
+    Keluar dari MariaDB:
 
-sudo nano /var/www/html/database.php
+    EXIT;
 
-Isi:
+    Login menggunakan user aplikasi:
 
+    mariadb -u ukom20 -p ukom20
+    mariadb -u ukom20-rafa -p ukom20
+
+    Masukkan password:
+    UkomDB@2026
+
+    Tes tabel:
+
+    SELECT * FROM informasi;
+    EXIT;
+
+
+    ============================================================
+    BAGIAN 2. KONFIGURASI WEB SERVER DAN PHP
+    ============================================================
+
+    12. INSTALL APACHE2 DAN PHP
+
+    sudo apt install apache2 php libapache2-mod-php php-mysql -y
+    sudo systemctl enable --now apache2
+
+    Buat direktori website:
+
+    sudo mkdir -p /var/www/ukom12tkj-20.sch.id
+
+    sudo nano /etc/apache2/sites-available/000-default.conf
+
+    <VirtualHost *:80>
+        ServerName ukom12tkj-20.sch.id
+ServerAlias www.ukom12tkj-20.sch.id
+
+<Directory /var/www/ukom12tkj-20.sch.id>
+    Options Indexes FollowSymLinks
+    AllowOverride All
+    Require all granted
+</Directory>
+
+        # The ServerName directive sets the request scheme, hostname and port that
+        # the server uses to identify itself. This is used when creating
+        # redirection URLs. In the context of virtual hosts, the ServerName
+        # specifies what hostname must appear in the request's Host: header to
+        # match this virtual host. For the default virtual host (this file) this
+        # value is not decisive as it is used as a last resort host regardless.
+        # However, you must set it for any further virtual host explicitly.
+        #ServerName www.example.com
+
+        ServerAdmin webmaster@localhost
+        DocumentRoot /var/www/ukom12tkj-20.sch.id
+
+        # Available loglevels: trace8, ..., trace1, debug, info, notice, warn,
+        # error, crit, alert, emerg.
+        # It is also possible to configure the loglevel for particular
+        # modules, e.g.
+        #LogLevel info ssl:warn
+
+        ErrorLog ${APACHE_LOG_DIR}/error.log
+        CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+        # For most configuration files from conf-available/, which are
+        # enabled or disabled at a global level, it is possible to
+        # include a line for only one particular virtual host. For example the
+        # following line enables the CGI configuration for this host only
+        # after it has been globally disabled with "a2disconf".
+        #Include conf-available/serve-cgi-bin.conf
+</VirtualHost>
+        
+    sudo systemctl reload apache2
+    sudo systemctl status apache2
+    Buat file PHP:
+
+    sudo nano /var/www/ukom12tkj-20.sch.id/database.php
+
+    Isi file dengan kode berikut:
 <?php
 $host = "localhost";
-$user = "ukom20";
-$password = "GANTI_PASSWORD_DATABASE";
+$user = "ukom20";    
+$password = "UkomDB@2026";
 $database = "ukom20";
 
 $conn = new mysqli($host, $user, $password, $database);
+
 if ($conn->connect_error) {
-    http_response_code(500);
-    error_log("Koneksi database gagal: " . $conn->connect_error);
-    exit("Koneksi database gagal.");
+http_response_code(500);
+error_log("Koneksi database gagal: " . $conn->connect_error);
+exit("Koneksi database gagal.");
 }
 
 $conn->set_charset("utf8mb4");
+
 echo "<h1>Koneksi Database Berhasil</h1>";
 
-$result = $conn->query("SELECT * FROM informasi");
+$sql = "SELECT * FROM informasi";
+$result = $conn->query($sql);
+
 if ($result && $result->num_rows > 0) {
-    while ($row = $result->fetch_assoc()) {
-        echo "<hr>";
-        echo "ID: " . htmlspecialchars((string)$row["id"]) . "<br>";
-        echo "Nama: " . htmlspecialchars($row["nama"]) . "<br>";
-        echo "Keterangan: " . htmlspecialchars($row["keterangan"]) . "<br>";
-        echo "Dibuat: " . htmlspecialchars($row["created_at"]) . "<br>";
-    }
-} else {
-    echo "Tidak ada data.";
+while ($row = $result->fetch_assoc()) {
+echo "<hr>";
+echo "ID: " . htmlspecialchars($row["id"]) . "<br>";
+echo "Nama: " . htmlspecialchars($row["nama"]) . "<br>";
+echo "Keterangan: " . htmlspecialchars($row["keterangan"]) . "<br>";
+echo "Dibuat: " . htmlspecialchars($row["created_at"]) . "<br>";
 }
+} else {
+echo "Tidak ada data.";
+}
+
 $conn->close();
 ?>
 
-Aktifkan/restart Apache:
+    Catatan: Password PHP harus sama dengan password user database pada langkah 8, yaitu UkomDB@2026.
 
-sudo systemctl enable --now apache2
-sudo systemctl restart apache2
-sudo apache2ctl configtest
+    reload Apache:
 
-Hasil configtest harus: Syntax OK.
-
-Landing page HTML:
-
-sudo nano /var/www/html/index.html
-
-Contoh isi:
-
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UKOM TKJ 20</title>
-</head>
-<body>
-    <h1>UKOM TKJ 20</h1>
-    <p>Web Server dan Database Server</p>
-    <p>IP Server: 10.10.20.2</p>
-    <p>Domain: ukom12tkj-20.sch.id</p>
-    <a href="/database.php">Tes Database</a><br>
-    <a href="/phpmyadmin/">phpMyAdmin</a>
-</body>
-</html>
-
-Izin akses file web:
-
-sudo chown -R www-data:www-data /var/www/html
-sudo find /var/www/html -type d -exec chmod 755 {} \;
-sudo find /var/www/html -type f -exec chmod 644 {} \;
-
-Catatan: jika folder /var/www/html berisi file lain yang memang dipakai,
-periksa dahulu sebelum mengubah kepemilikan seluruh folder.
+    sudo systemctl reload apache2
 
 
-============================================================
-4. VIRTUALHOST APACHE UNTUK DOMAIN
-============================================================
+    20. TES PHP DARI UBUNTU
 
-Buat/edit file:
+    curl http://localhost/database.php
 
-sudo nano /etc/apache2/sites-available/ukom12tkj-20.sch.id.conf
+    Pastikan muncul tulisan Koneksi Database Berhasil beserta data UKOM TKJ, Absen 20, MikroTik, dan Server.
 
-Isi:
+
+    14. TES DARI LAPTOP
+
+    Buka browser laptop dan akses:
+
+    http://100.100.20.2/database.php
+
+
+    ============================================================
+    BAGIAN 3. KONFIGURASI PHPMYADMIN
+    ============================================================
+
+    15. INSTALL PHPMYADMIN
+
+    sudo apt update
+    sudo apt install phpmyadmin php-mysql -y
+
+    Saat installer meminta pilihan web server:
+    1. Pilih apache2 menggunakan tombol Space.
+    2. Tekan Enter.
+    3. Jika ditanya konfigurasi database dengan dbconfig-common, pilih Yes.
+
+
+    16. AKTIFKAN KONFIGURASI PHPMYADMIN
+
+    sudo a2enconf phpmyadmin
+    sudo systemctl reload apache2
+
+
+    17. PERIKSA FILE PHPMYADMIN
+
+    ls -lah /usr/share/phpmyadmin
+
+    Pastikan file dan direktori seperti index.php, libraries, dan templates tersedia.
+
+
+    18. TES PHPMYADMIN DARI UBUNTU
+
+    curl -I http://127.0.0.1/phpmyadmin/
+
+    Hasil yang diharapkan adalah HTTP/1.1 200 OK atau respons pengalihan menuju halaman login.
+
+
+    20. TES PHPMYADMIN DARI LAPTOP
+
+    Buka browser:
+
+    http://100.100.20.2/phpmyadmin/
+
+
+    ============================================================
+    BAGIAN 4. KONFIGURASI VIRTUALHOST APACHE
+    ============================================================
+
+    20. BUAT KONFIGURASI DOMAIN
+
+    Buka file:
+
+    sudo nano /etc/apache2/sites-available/ukom12tkj-20.sch.id.conf
+
+    Isi konfigurasi:
 
 <VirtualHost *:80>
     ServerName ukom12tkj-20.sch.id
     ServerAlias www.ukom12tkj-20.sch.id
-    DocumentRoot /var/www/html
+    ServerAlias 100.100.20.2
 
-    <Directory /var/www/html>
+    DocumentRoot /var/www/ukom12tkj-20.sch.id
+
+    <Directory /var/www/ukom12tkj-20.sch.id>
         Options FollowSymLinks
         AllowOverride All
         Require all granted
@@ -278,101 +349,221 @@ Isi:
     CustomLog ${APACHE_LOG_DIR}/ukom20-access.log combined
 </VirtualHost>
 
-Aktifkan situs dan periksa:
+    Buat direktori dan aktifkan situs:
 
-sudo a2ensite ukom12tkj-20.sch.id.conf
-sudo apache2ctl configtest
-sudo systemctl reload apache2
-sudo systemctl status apache2 --no-pager
+    sudo mkdir -p /var/www/ukom12tkj-20.sch.id
+    sudo a2ensite ukom12tkj-20.sch.id.conf
+    sudo apache2ctl configtest
+    sudo systemctl reload apache2
 
-Jangan menjalankan a2ensite berulang kali jika situs sudah aktif.
-
-
-============================================================
-5. PHPMYADMIN
-============================================================
-
-Install:
-
-sudo apt install phpmyadmin php-mysql -y
-
-Saat installer meminta web server, pilih apache2 dengan tombol Space,
-lalu Enter. Jika ditanya dbconfig-common, ikuti kebutuhan instalasi.
-
-Aktifkan konfigurasi:
-
-sudo a2enconf phpmyadmin
-sudo apache2ctl configtest
-sudo systemctl reload apache2
-
-Tes file:
-
-ls -lah /usr/share/phpmyadmin
-
-Tes HTTP:
-
-curl -I http://127.0.0.1/phpmyadmin/
-
-URL akses:
-
-http://ukom12tkj-20.sch.id/phpmyadmin/
-
-Jangan membuat symlink manual jika konfigurasi phpMyAdmin sudah tersedia.
-Jangan menjalankan a2ensite untuk file konfigurasi phpMyAdmin.
+    Pastikan hasil pemeriksaan konfigurasi menunjukkan Syntax OK.
 
 
-============================================================
-6. DNS BIND9 DI UBUNTU SERVER
-============================================================
+    21. BUAT LANDING PAGE
 
-Install/aktifkan:
+    Buka file:
 
-sudo apt install bind9 bind9-utils bind9-dnsutils -y
-sudo systemctl enable --now named
+    sudo nano /var/www/ukom12tkj-20.sch.id/index.html
 
-Zona domain:
+    Isi dengan HTML berikut:
 
-sudo nano /etc/bind/named.conf.local
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Muhammad Rafa Attallah · TKJ</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;800&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef3f8; --ink:#0d2b4a; --muted:#4d6783; --line:#c5d3e2;
+  --blue:#1f6feb; --orange:#f28c28; --green:#2fa36b;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#0b1a2c; --ink:#e6eef8; --muted:#93a9c2; --line:#22405f; --blue:#5b9bff; --orange:#ffa84d; --green:#4cc58b;}
+}
+:root[data-theme="dark"]{--bg:#0b1a2c; --ink:#e6eef8; --muted:#93a9c2; --line:#22405f; --blue:#5b9bff; --orange:#ffa84d; --green:#4cc58b;}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:400 1.05rem/1.65 "IBM Plex Sans",system-ui,sans-serif;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:40px 40px; background-position:-1px -1px;
+}
+main{max-width:860px; margin:0 auto; padding:0 1.5rem 4rem}
+h1,h2{font-family:"Bricolage Grotesque",Georgia,sans-serif; margin:0; line-height:1.02; letter-spacing:-.02em}
 
-Pastikan ada satu deklarasi zona berikut (jangan diduplikasi):
+.hero{padding:clamp(3rem,10vw,6rem) 0 2rem}
+.hero p.tag{margin:0 0 1.2rem; color:var(--muted); font-weight:500}
+h1{font-size:clamp(2.8rem,10vw,5.6rem); font-weight:800}
+.hero .lead{max-width:34rem; margin:1.4rem 0 0; color:var(--muted)}
+.id{display:inline-block; margin-top:1.6rem; padding:.35rem .9rem; border:2px solid var(--ink); border-radius:999px; font-weight:500}
 
-zone "ukom12tkj-20.sch.id" {
+.net{width:100%; height:auto; margin:2.5rem 0 1rem; display:block}
+.net .wire{stroke-width:4; fill:none; stroke-linecap:round}
+.net .flow{stroke-dasharray:2 14; animation:flow 1.4s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-32}}
+.net text{font:500 13px "IBM Plex Sans",sans-serif; fill:var(--muted); text-anchor:middle}
+.net .node{fill:var(--bg); stroke:var(--ink); stroke-width:3}
+
+h2{font-size:clamp(1.8rem,5vw,2.6rem); margin:3.5rem 0 1.2rem}
+.ports{list-style:none; margin:0; padding:0; border-top:2px solid var(--ink)}
+.ports li{display:grid; grid-template-columns:auto 1fr; gap:1.2rem; padding:1.1rem 0; border-bottom:1px solid var(--line)}
+.ports i{width:14px; height:14px; border-radius:50%; margin-top:.5rem}
+.ports b{font-family:"Bricolage Grotesque",sans-serif; font-size:1.25rem; font-weight:800; display:block}
+.ports span{color:var(--muted)}
+
+.skills{display:flex; flex-wrap:wrap; gap:.6rem; padding:0; margin:0; list-style:none}
+.skills li{padding:.4rem 1rem; border:1.5px solid var(--ink); border-radius:8px; font-weight:500}
+
+footer{margin-top:4rem; padding-top:1.2rem; border-top:2px solid var(--ink); display:flex; justify-content:space-between; flex-wrap:wrap; gap:.5rem; color:var(--muted); font-size:.95rem}
+@media (prefers-reduced-motion:reduce){.net .flow{animation:none}}
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <p class="tag">Teknik Komputer dan Jaringan</p>
+    <h1>Muhammad Rafa Attallah</h1>
+    <p class="lead">Siswa TKJ yang suka membuat perangkat saling terhubung: dari mengatur IP, memasang kabel, sampai menyalakan server.</p>
+    <span class="id">Ukom12tkja-20</span>
+
+    <svg class="net" viewBox="0 0 800 220" role="img" aria-label="Diagram jaringan: router terhubung ke switch, lalu ke tiga komputer">
+      <path class="wire" stroke="var(--blue)" d="M120 110 H300"/>
+      <path class="wire flow" stroke="var(--bg)" d="M120 110 H300"/>
+      <path class="wire" stroke="var(--orange)" d="M300 110 H480 L620 40"/>
+      <path class="wire" stroke="var(--green)" d="M480 110 H620"/>
+      <path class="wire" stroke="var(--blue)" d="M480 110 L620 180"/>
+      <path class="wire flow" stroke="var(--bg)" d="M300 110 H480 L620 40 M480 110 H620 M480 110 L620 180"/>
+      <rect class="node" x="60" y="80" width="80" height="60" rx="10"/>
+      <rect class="node" x="260" y="90" width="80" height="40" rx="8"/>
+      <rect class="node" x="440" y="90" width="80" height="40" rx="8"/>
+      <rect class="node" x="620" y="20" width="60" height="40" rx="6"/>
+      <rect class="node" x="620" y="90" width="60" height="40" rx="6"/>
+      <rect class="node" x="620" y="160" width="60" height="40" rx="6"/>
+      <text x="100" y="170">Router</text>
+      <text x="300" y="155">Switch</text>
+      <text x="480" y="155">Switch</text>
+      <text x="740" y="115">PC</text>
+    </svg>
+  </section>
+
+  <h2>Apa itu TKJ?</h2>
+  <ul class="ports">
+    <li><i style="background:var(--blue)"></i><div><b>Jaringan</b><span>Merancang, memasang, dan mengatur jaringan komputer: alamat IP, routing, dan perangkat seperti router dan switch.</span></div></li>
+    <li><i style="background:var(--orange)"></i><div><b>Server</b><span>Menginstal dan mengelola layanan di sistem operasi Linux, seperti web server, database, dan hosting.</span></div></li>
+    <li><i style="background:var(--green)"></i><div><b>Troubleshooting</b><span>Mencari tahu kenapa koneksi putus atau perangkat error, lalu memperbaikinya langkah demi langkah.</span></div></li>
+  </ul>
+
+  <h2>Yang saya pelajari</h2>
+  <ul class="skills">
+    <li>Subnetting</li>
+    <li>MikroTik</li>
+    <li>Static Routing</li>
+    <li>Linux Server</li>
+    <li>Cisco Packet Tracer</li>
+    <li>Kabel UTP</li>
+  </ul>
+
+  <footer>
+    <span>Muhammad Rafa Attallah</span>
+    <span>Ukom12tkja-20</span>
+  </footer>
+</main>
+</body>
+</html>
+
+    ============================================================
+    BAGIAN 5. KONFIGURASI DNS BIND9
+    ============================================================
+
+    22. INSTALL DAN AKTIFKAN BIND9
+
+    sudo apt install bind9 bind9-utils bind9-dnsutils -y
+    sudo systemctl enable --now named
+
+
+    23. KONFIGURASI ZONA DNS
+
+    Buka file:
+
+    sudo nano /etc/bind/named.conf.local
+
+    Tambahkan konfigurasi berikut:
+
+    zone "ukom12tkj-20.sch.id" {
     type master;
     file "/etc/bind/db.ukom12tkj-20.sch.id";
 };
 
-Buat file zona:
+zone "20.100.100.in-addr.arpa" {
+    type master;
+    file "/etc/bind/db.100.100.20";
+};
 
-sudo nano /etc/bind/db.ukom12tkj-20.sch.id
 
-Isi:
+    24. BUAT FILE ZONA DNS
+
+    Salin file zona bawaan:
+
+    
+    sudo nano /etc/bind/db.ukom12tkj-20.sch.id
+
+    Isi file zona:
 
 $TTL 604800
 @   IN  SOA ns1.ukom12tkj-20.sch.id. admin.ukom12tkj-20.sch.id. (
-        2026111101
+        2026110301
         604800
         86400
-        2419200
+        2420200
         604800
 )
+
 @       IN  NS  ns1.ukom12tkj-20.sch.id.
-@       IN  A   10.10.20.2
-ns1     IN  A   10.10.20.2
-www     IN  A   10.10.20.2
+@       IN  A   100.100.20.2
+ns1     IN  A   100.100.20.2
+www     IN  A   100.100.20.2
 
-Catatan: setiap perubahan isi zona harus menaikkan serial SOA.
+systemctl restart named
+named-checkzone ukom12tkj-20.sch.id /etc/bind/db.ukom12tkj-20.sch.id
 
-Opsi BIND9:
 
-sudo nano /etc/bind/named.conf.options
+sudo nano /etc/bind/db.100.100.20
+$TTL 604800
+@   IN SOA ns1.ukom12tkj-20.sch.id. admin.ukom12tkj-20.sch.id. (
+        2026110701
+        604800
+        86400
+        2420200
+        604800
+)
 
-Gunakan konfigurasi berikut, dengan memastikan tidak ada deklarasi
-options kedua di file yang sama:
+@   IN NS ns1.ukom12tkj-20.sch.id.
 
-options {
+2 IN PTR ukom12tkj-20.sch.id.
+
+
+
+    25. KONFIGURASI OPSI BIND9
+
+    Buka file:
+
+    sudo nano /etc/bind/named.conf.options
+
+    Sesuaikan konfigurasi menjadi:
+
+    options {
     directory "/var/cache/bind";
 
-    listen-on { 127.0.0.1; 10.10.20.2; };
+    listen-on {
+        127.0.0.1;
+        100.100.20.2;
+    };
+
     listen-on-v6 { none; };
 
     allow-query {
@@ -382,7 +573,14 @@ options {
     };
 
     recursion yes;
+
     allow-recursion {
+        localhost;
+        10.10.20.0/28;
+        192.168.20.0/24;
+    };
+
+    allow-query-cache {
         localhost;
         10.10.20.0/28;
         192.168.20.0/24;
@@ -396,284 +594,130 @@ options {
     dnssec-validation auto;
 };
 
-Catatan: jaringan Wi-Fi ditambahkan agar klien hotspot boleh melakukan
-query langsung ke BIND9 bila memang DNS HP diarahkan langsung ke Ubuntu.
-Dalam rancangan yang dipakai, DNS HP diarahkan ke MikroTik 192.168.20.1.
 
-Validasi dan restart:
+    26. VALIDASI DAN RELOAD BIND9
+
+    sudo named-checkconf
+    sudo named-checkzone ukom12tkj-20.sch.id /etc/bind/db.ukom12tkj-20.sch.id
+    sudo systemctl reload named
+    sudo systemctl status bind9 --no-pager
+
+    Tes DNS:
+
+    dig @127.0.0.1 ukom12tkj-20.sch.id
+    dig @100.100.20.2 ukom12tkj-20.sch.id
+
+    Pastikan hasil DNS mengarah ke 100.100.20.2.
+
+sudo nano /etc/bind/db.ukom12tkj-20.sch.id
+$TTL 604800
+
+@   IN  SOA ns1.ukom12tkj-20.sch.id. admin.ukom12tkj-20.sch.id. (
+        2026111402
+        604800
+        86400
+        2420200
+        604800
+)
+
+@       IN  NS  ns1.ukom12tkj-20.sch.id.
+
+@       IN  A   100.100.20.2
+ns1     IN  A   100.100.20.2
+www     IN  A   100.100.20.2
 
 sudo named-checkconf
+
 sudo named-checkzone ukom12tkj-20.sch.id /etc/bind/db.ukom12tkj-20.sch.id
-sudo systemctl restart named
-sudo systemctl status named --no-pager
 
-Tes:
+sudo systemctl reload named
 
-dig @127.0.0.1 ukom12tkj-20.sch.id
-dig @10.10.20.2 ukom12tkj-20.sch.id
-dig @127.0.0.1 google.com
+    ============================================================
+    BAGIAN 7. KONFIGURASI FIREWALL UFW
+    ============================================================
 
-Domain internal harus mengarah ke 10.10.20.2.
+    29. IZINKAN LAYANAN DARI JARINGAN LAB
 
+sudo ufw allow from 100.100.20.0/30 to 100.100.20.2 port 53 proto udp
+sudo ufw allow from 100.100.20.0/30 to 100.100.20.2 port 53 proto tcp
 
-============================================================
-7. DNS DAN HOSTS DI WINDOWS
-============================================================
+sudo ufw allow from 10.10.20.0/28 to 100.100.20.2 port 53 proto udp
+sudo ufw allow from 10.10.20.0/28 to 100.100.20.2 port 53 proto tcp
 
-Jika Windows menggunakan DNS Ubuntu, set DNS adapter Ethernet ke:
-10.10.20.2
+sudo ufw allow from 202.168.20.0/24 to 100.100.20.2 port 53 proto udp
+sudo ufw allow from 202.168.20.0/24 to 100.100.20.2 port 53 proto tcp
 
-CMD Administrator:
+sudo ufw allow from 100.100.20.0/30 to 100.100.20.2 port 80 proto tcp
+sudo ufw allow from 10.10.20.0/28 to 100.100.20.2 port 80 proto tcp
+sudo ufw allow from 202.168.20.0/24 to 100.100.20.2 port 80 proto tcp
 
-ipconfig /flushdns
-nslookup ukom12tkj-20.sch.id 10.10.20.2
-nslookup www.google.com 10.10.20.2
+sudo ufw allow from 100.100.20.0/30 to 100.100.20.2 port 443 proto tcp
+sudo ufw allow from 10.10.20.0/28 to 100.100.20.2 port 443 proto tcp
+sudo ufw allow from 202.168.20.0/24 to 100.100.20.2 port 443 proto tcp
 
-Alternatif file hosts hanya untuk laptop Windows tersebut:
-Buka Notepad sebagai Administrator, lalu buka:
-C:\Windows\System32\drivers\etc\hosts
+sudo ufw allow from 100.100.20.0/30 to 100.100.20.2 port 22 proto tcp
+sudo ufw allow from 10.10.20.0/28 to 100.100.20.2 port 22 proto tcp
 
-Tambahkan:
-
-10.10.20.2 ukom12tkj-20.sch.id
-10.10.20.2 www.ukom12tkj-20.sch.id
-
-Jangan memakai IP lama 172.16.0.178, 192.168.8.197, atau
-10.10.32.13 karena bukan IP server pada topologi yang sedang dipakai.
-
-
-============================================================
-8. MIKROTIK - KONDISI AKTUAL DAN PEMERIKSAAN
-============================================================
-
-Nama interface yang terlihat pada router:
-- ETH 1ISP
-- ETH 2 SERVER
-- ETH 3 CLIENT
-- WLAN 1 HOTSPOT
-
-Alamat yang dipakai:
-- ETH 2 SERVER    : 10.10.20.1/28
-- ETH 3 CLIENT    : 100.100.20.1/30
-- WLAN 1 HOTSPOT  : 192.168.20.1/24
-- ETH 1ISP        : DHCP client dari ISP
-
-SSID yang terlihat saat pemeriksaan: Ukom12tkj-20
-Security profile default: mode=none (Wi-Fi terbuka).
-Hotspot aktif pada interface WLAN 1 HOTSPOT.
-
-PENTING: ekspor MikroTik lama dalam catatan sebelumnya memakai bridge
-BR-HOTSPOT, ether1/ether2/ether3, dan wlan1. Itu tidak sama dengan
-kondisi router yang terakhir diperiksa. Jangan paste/import seluruh
-blok konfigurasi lama ke router aktif.
-
-Perintah pemeriksaan (aman, hanya menampilkan konfigurasi):
-
-/interface print
-/interface wireless print
-/interface wireless monitor "WLAN 1 HOTSPOT" once
-/ip address print
-/ip route print
-/ip dns print
-/ip dns static print
-/ip pool print
-/ip dhcp-server print detail
-/ip dhcp-server network print
-/ip dhcp-server lease print
-/ip hotspot print detail
-/ip hotspot host print
-/ip firewall filter print
-/ip firewall nat print
-
-DNS untuk hotspot:
-MikroTik menjadi DNS yang diberikan ke HP. Periksa bahwa ada DNS static
-A record berikut:
-
-/ip dns static print
-
-Record yang dibutuhkan:
-Name    : ukom12tkj-20.sch.id
-Address : 10.10.20.2
-Type    : A
-
-DHCP network hotspot harus memberikan:
-Network : 192.168.20.0/24
-Gateway : 192.168.20.1
-DNS     : 192.168.20.1
-
-Periksa dengan:
-
-/ip dhcp-server network print detail
-
-DHCP hotspot sebelumnya pernah terlihat INVALID dengan pesan
-"Interface not running". Jangan membuat DHCP server kedua atau mengubah
-interface sebelum memeriksa status wireless dan DHCP terkini.
-Pastikan hanya ada satu DHCP server untuk jaringan hotspot.
-Pool hotspot yang pernah terlihat: 192.168.20.2-192.168.20.254.
-
-Hotspot sebelumnya terlihat menggunakan:
-Interface : WLAN 1 HOTSPOT
-Pool      : hs-pool-7
-Profile   : hsprof1
-
-Jangan membuat bridge baru jika rancangan tetap menggunakan WLAN
-langsung sebagai interface hotspot.
-
-Firewall:
-- Jika chain forward tidak memiliki aturan drop yang memblokir trafik,
-  tidak perlu menambah aturan allow yang sama berulang kali.
-- Jika ada aturan drop, aturan allow dari 192.168.20.0/24 ke
-  10.10.20.2 TCP port 80 harus berada sebelum aturan drop terkait.
-- Untuk DNS, HP mengakses MikroTik di 192.168.20.1 port 53.
-- Jangan menghapus dynamic Hotspot firewall rules.
-- NAT internet yang diperlukan adalah masquerade menuju interface WAN
-  ETH 1ISP. Pastikan aturan yang ada sudah bekerja sebelum menambah lagi.
-
-
-============================================================
-9. UJI AKSES WEBSITE DARI UBUNTU, PC, DAN HP
-============================================================
-
-A. Dari Ubuntu Server:
-
-curl -I http://127.0.0.1/
-curl -I http://10.10.20.2/
-curl -I http://ukom12tkj-20.sch.id/
-sudo ss -lntp | grep ':80'
-
-Hasil yang diharapkan: HTTP 200 atau redirect HTTP yang wajar dan
-Apache mendengarkan pada port 80.
-
-B. Dari PC kabel:
-
-Buka:
-http://10.10.20.2/
-http://ukom12tkj-20.sch.id/
-
-C. Dari HP melalui Wi-Fi MikroTik:
-1. Sambungkan HP ke SSID Ukom12tkj-20.
-2. Jika Hotspot meminta login, login terlebih dahulu.
-3. Matikan data seluler sementara agar pengujian benar-benar lewat Wi-Fi.
-4. Untuk pengujian lokal, matikan Private DNS sementara atau gunakan
-   pengaturan DNS otomatis.
-5. Pastikan HP mendapat IP 192.168.20.x, gateway 192.168.20.1,
-   dan DNS 192.168.20.1.
-6. Buka alamat dengan HTTP, bukan HTTPS:
-   http://10.10.20.2/
-   http://ukom12tkj-20.sch.id/
-
-Jika alamat IP langsung bisa dibuka tetapi domain tidak:
-- Periksa DNS static MikroTik.
-- Periksa DNS yang diterima HP dari DHCP.
-- Pastikan domain yang diketik tepat dan gunakan http://.
-
-Jika IP langsung dan domain sama-sama loading:
-- Periksa Apache aktif.
-- Periksa port TCP 80.
-- Periksa firewall MikroTik chain forward.
-- Periksa log Apache:
-  sudo tail -n 50 /var/log/apache2/ukom20-error.log
-  sudo tail -n 50 /var/log/apache2/ukom20-access.log
-
-D. Speed test:
-Pengujian akses halaman HTML lokal berbeda dengan speed test internet.
-Setelah akses lokal berhasil, uji internet HP dengan aplikasi/situs
-speed test. Jika halaman lokal berhasil tetapi speed test gagal, periksa
-koneksi internet, DNS, dan NAT secara terpisah.
-
-
-============================================================
-10. FIREWALL UBUNTU (UFW) - JANGAN AKTIFKAN SEMBARANGAN
-============================================================
-
-Periksa dahulu:
-
+sudo ufw status numbered
+sudo ufw enable
+sudo ufw reload
 sudo ufw status verbose
 
-Jika UFW inactive, tidak perlu mengaktifkannya hanya untuk mengikuti
-catatan. Jika UFW active dan akses layanan diblokir, izinkan layanan
-untuk jaringan lab berikut:
-
-sudo ufw allow from 10.10.20.0/28 to 10.10.20.2 port 53 proto udp
-sudo ufw allow from 10.10.20.0/28 to 10.10.20.2 port 53 proto tcp
-sudo ufw allow from 192.168.20.0/24 to 10.10.20.2 port 53 proto udp
-sudo ufw allow from 192.168.20.0/24 to 10.10.20.2 port 53 proto tcp
-sudo ufw allow from 10.10.20.0/28 to 10.10.20.2 port 80 proto tcp
-sudo ufw allow from 192.168.20.0/24 to 10.10.20.2 port 80 proto tcp
-
-Port 443 hanya diperlukan jika HTTPS benar-benar dikonfigurasi.
-Jangan mengaktifkan UFW melalui SSH sebelum aturan SSH dipastikan aman.
+    Periksa aturan yang tampil. Jika UFW belum aktif, pastikan akses SSH sudah diizinkan sebelum mengaktifkannya agar koneksi administrasi tidak terputus.
 
 
-============================================================
-11. PEMERIKSAAN AKHIR SEBELUM UKOM
-============================================================
+    ============================================================
+    BAGIAN 8. PENGUJIAN AKHIR
+    ============================================================
 
-Ubuntu:
+    30. PERIKSA IP DAN GATEWAY
 
-ip -br address
-ip route
-sudo netplan generate
-sudo named-checkconf
-sudo named-checkzone ukom12tkj-20.sch.id /etc/bind/db.ukom12tkj-20.sch.id
-sudo apache2ctl configtest
-sudo systemctl is-active mariadb
-sudo systemctl is-active apache2
-sudo systemctl is-active named
+    ip -br a
+    ip route
 
-Tes layanan:
-
-mariadb -u ukom20 -p ukom20
-curl -I http://127.0.0.1/
-curl -I http://10.10.20.2/
-dig @10.10.20.2 ukom12tkj-20.sch.id
-
-MikroTik:
-
-/ip address print
-/ip route print
-/ip dns print
-/ip dns static print
-/ip dhcp-server print detail
-/ip dhcp-server lease print
-/ip hotspot print detail
-/ip firewall filter print
-/ip firewall nat print
-
-Pastikan:
-- Ubuntu tetap 10.10.20.2/28.
-- Gateway Ubuntu tetap 10.10.20.1.
-- Domain final tetap ukom12tkj-20.sch.id.
-- DNS domain mengarah ke 10.10.20.2.
-- Apache aktif dan port 80 dapat diakses.
-- HP mendapat alamat 192.168.20.x saat terhubung ke hotspot.
-- HP dapat membuka http://ukom12tkj-20.sch.id/.
+    Pastikan IP server sesuai dengan 100.100.20.2/30 dan gateway sesuai dengan konfigurasi jaringan lab.
 
 
-============================================================
-12. BAGIAN LAMA YANG DIHAPUS / DIKOREKSI
-============================================================
+    31. PERIKSA STATUS LAYANAN
 
-1. Menghapus CREATE DATABASE ukom20 yang tertulis dua kali.
-2. Memperbaiki typo "ssudo systemctl restart apache2" menjadi
-   "sudo systemctl restart apache2".
-3. Menghapus IP hosts lama 172.16.0.178; IP server sekarang 10.10.20.2.
-4. Menghapus IP/domain contoh dari topologi lain:
-   192.168.8.197, 10.10.32.13, dan 192.168.137.3.
-5. Mengoreksi DNS zone agar domain .20 mengarah ke 10.10.20.2.
-6. Mengoreksi netplan agar nama interface enp0s3 dan indentasi YAML
-   benar, dengan gateway 10.10.20.1 tanpa /28.
-7. Menandai konfigurasi MikroTik bridge lama sebagai referensi usang,
-   karena pemeriksaan terakhir menunjukkan Hotspot langsung pada
-   WLAN 1 HOTSPOT dan bridge tidak ada.
-8. Tidak menyarankan import konfigurasi MikroTik lama secara penuh,
-   karena nama interface dan susunan aktual router sudah berbeda.
-9. Menambahkan pemeriksaan DHCP hotspot INVALID, DNS HP, port HTTP,
-   akses HTML dari HP, dan pengujian berdasarkan IP sebelum domain.
-10. Menghindari penambahan firewall/NAT duplikat tanpa memeriksa
-    aturan yang sudah aktif.
+    sudo systemctl status mariadb --no-pager
+    sudo systemctl status apache2 --no-pager
+    sudo systemctl status bind9 --no-pager
+
+    Pastikan ketiga layanan berjalan dengan status active (running).
 
 
-============================================================
-                    AKHIR DOKUMEN
-============================================================
+    20. PERIKSA KONFIGURASI DAN AKSES
+
+    Validasi konfigurasi Apache dan DNS:
+
+    sudo apache2ctl configtest
+    sudo named-checkconf
+    sudo named-checkzone ukom12tkj-20.sch.id /etc/bind/db.ukom12tkj-20.sch.id
+
+    Tes akses web:
+
+    curl -I http://100.100.20.2/
+    curl -I http://100.100.20.2/database.php
+    curl -I http://100.100.20.2/phpmyadmin/
+
+    Jika semua konfigurasi benar, layanan web dan phpMyAdmin dapat diakses dari jaringan lab sesuai aturan firewall.
+
+
+    ============================================================
+    HASIL AKHIR
+    ============================================================
+
+    IP Server         : 100.100.20.2/30
+    Gateway           : 10.10.20.1
+    Domain            : ukom12tkj-20.sch.id
+    Database          : ukom20
+    Tabel             : informasi
+    User Database     : ukom20
+    Password Database : UkomDB@2026
+    Landing Page      : http://ukom12tkj-20.sch.id/
+    Tes Database      : http://ukom12tkj-20.sch.id/database.php
+    phpMyAdmin        : http://ukom12tkj-20.sch.id/phpmyadmin/
+
+    CATATAN PENTING
+    Gateway 10.10.20.1 harus sesuai dengan jaringan VirtualBox atau router yang digunakan. Password database dipertahankan sesuai permintaan dan harus sama pada konfigurasi MariaDB serta PHP.
